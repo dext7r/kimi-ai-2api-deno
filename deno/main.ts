@@ -175,6 +175,7 @@ async function fetchNonce(): Promise<string> {
   const origin = new URL(CONFIG.chatPageUrl).origin;
   const headers = generateBrowserHeaders(origin, CONFIG.chatPageUrl);
   headers["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
+  headers["Accept-Encoding"] = "identity";
   delete headers["Content-Type"];
 
   const controller = new AbortController();
@@ -192,6 +193,7 @@ async function fetchNonce(): Promise<string> {
       status: response.status,
       redirected: response.redirected,
       finalUrl: response.url,
+      contentEncoding: response.headers.get("content-encoding") ?? "none",
     });
 
     if (!response.ok) {
