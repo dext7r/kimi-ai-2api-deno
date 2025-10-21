@@ -57,6 +57,7 @@ const apiRequestTimeoutSeconds = Number(envOrDefault("API_REQUEST_TIMEOUT", "180
 const CONFIG: ProxyConfig = {
   port: Number(envOrDefault("PORT", "9090")),
   debugMode: envOrDefault("DEBUG_MODE", "false") === "true",
+  debugLogNonceHtml: envOrDefault("DEBUG_LOG_NONCE_HTML", "false") === "true",
   defaultStream: envOrDefault("DEFAULT_STREAM", "true") !== "false",
   dashboardEnabled: envOrDefault("DASHBOARD_ENABLED", "true") !== "false",
   upstreamUrl: envOrDefault("UPSTREAM_URL", "https://kimi-ai.chat/wp-admin/admin-ajax.php"),
@@ -180,10 +181,17 @@ async function fetchNonce(): Promise<string> {
   const timeout = setTimeout(() => controller.abort(), 30000);
 
   try {
+    debugLog(CONFIG.debugMode, "开始获取聊天页面以提取 nonce", { url: CONFIG.chatPageUrl });
     const response = await fetch(CONFIG.chatPageUrl, {
       method: "GET",
       headers,
       signal: controller.signal,
+    });
+
+    debugLog(CONFIG.debugMode, "聊天页面响应已返回", {
+      status: response.status,
+      redirected: response.redirected,
+      finalUrl: response.url,
     });
 
     if (!response.ok) {
@@ -191,8 +199,14 @@ async function fetchNonce(): Promise<string> {
     }
 
     const html = await response.text();
+    if (CONFIG.debugLogNonceHtml) {
+      const preview = html.replace(/\s+/g, " ").slice(0, 500);
+      console.log("[DEBUG][nonce-html]", new Date().toISOString(), preview);
+    }
+
     const match = html.match(/var\s+kimi_ajax\s*=\s*({[\s\S]*?});/);
     if (!match) {
+      debugLog(CONFIG.debugMode, "未在页面中匹配到 kimi_ajax 对象");
       throw new Error("在页面 HTML 中未找到 'kimi_ajax' 变量。");
     }
 

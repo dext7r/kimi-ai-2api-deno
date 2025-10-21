@@ -86,6 +86,7 @@ deno/
 | --- | --- | --- |
 | `PORT` | 服务监听端口 | `9090` |
 | `DEBUG_MODE` | 输出上游请求/响应日志 | `false` |
+| `DEBUG_LOG_NONCE_HTML` | 在获取 nonce 失败时输出页面 HTML 片段 | `false` |
 | `DEFAULT_STREAM` | 未显式传入 `stream` 时的默认行为 | `true` |
 | `DASHBOARD_ENABLED` | 是否开放 `/dashboard` 页面 | `true` |
 | `API_MASTER_KEY` | Bearer Token；为空或 `1` 表示关闭校验 | *(空)* |
@@ -152,6 +153,7 @@ deno task dev
 
 ## 🧪 调试建议
 - 设置 `DEBUG_MODE=true` 可查看上游请求体、返回体及 nonce 变更日志。
+- 若需排查 nonce 抓取失败，可额外开启 `DEBUG_LOG_NONCE_HTML=true` 输出页面片段。
 - 使用 `KNOWN_MODELS` 自定义多个模型时，确保同时更新 `UPSTREAM_MODEL_MAP`。
 - 若上游接口策略收紧，可调整 `CONTEXT_MAX_LENGTH`、`SESSION_CACHE_TTL` 或自行扩展代理逻辑。
 - 测试伪流式可配合 `curl -N` 或 OpenAI SDK 的 `stream` 模式。

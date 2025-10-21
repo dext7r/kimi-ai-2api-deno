@@ -66,6 +66,7 @@ export interface ProxyConfig {
   // Server settings
   port: number;
   debugMode: boolean;
+  debugLogNonceHtml: boolean;
   defaultStream: boolean;
   dashboardEnabled: boolean;
 
