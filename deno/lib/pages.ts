@@ -329,8 +329,39 @@ export function getDashboardPage(
     ? ((stats.successfulRequests / stats.totalRequests) * 100).toFixed(1)
     : "0.0";
   const uptime = formatUptime(stats.startTime);
+  const shanghaiTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const shanghaiDateTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const formatShanghaiTime = (date: Date) => shanghaiTimeFormatter.format(date);
+  const formatShanghaiDateTime = (date: Date) => {
+    const parts = shanghaiDateTimeFormatter.formatToParts(date);
+    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
+    return `${part("year")}年${part("month")}月${part("day")}日 ${part("hour")}:${part("minute")}:${part("second")}`;
+  };
 
   const recentRequests = liveRequests.slice(0, 20);
+  const chartData = recentRequests.map((req) => ({
+    time: req.timestamp.toISOString(),
+    displayTime: formatShanghaiTime(req.timestamp),
+    duration: Number(req.duration.toFixed(2)),
+    status: req.status,
+  }));
+  const programStartDisplay = formatShanghaiDateTime(stats.startTime);
+  const runtimeSummary = `程序运行时间：${programStartDisplay}（UTC+8），截至当前已稳定运行 ${uptime}`;
 
   return `${getHtmlHead("Dashboard", config, lang, config.seoDescription, currentUrl)}
 <body class="min-h-screen bg-slate-100 text-slate-900">
@@ -343,6 +374,7 @@ export function getDashboardPage(
                 <span class="text-3xl">📊</span> Dashboard
             </h1>
             <p class="text-slate-500">实时监控服务运行状态与请求表现。</p>
+            <p class="text-slate-400 text-sm mt-2">${runtimeSummary}</p>
         </div>
 
         <!-- Top Stats Cards -->
@@ -436,7 +468,7 @@ export function getDashboardPage(
                     <tbody class="divide-y divide-slate-100">
                         ${recentRequests.length === 0 ? `<tr><td colspan="6" class="py-6 text-center text-slate-500">暂无请求数据</td></tr>` : recentRequests.map((req) => `
                         <tr class="hover:bg-slate-50 transition">
-                            <td class="py-2 px-3 font-mono text-xs text-slate-500">${req.timestamp.toLocaleTimeString()}</td>
+                            <td class="py-2 px-3 font-mono text-xs text-slate-500">${formatShanghaiTime(req.timestamp)}</td>
                             <td class="py-2 px-3"><span class="chip chip-blue">${req.method}</span></td>
                             <td class="py-2 px-3 font-mono text-xs text-slate-600">${req.path}</td>
                             <td class="py-2 px-3">
@@ -452,13 +484,12 @@ export function getDashboardPage(
     </div>
     <script>
         document.addEventListener("DOMContentLoaded", () => {
+            setInterval(() => {
+                window.location.reload();
+            }, 30000);
             if (!window.echarts) return;
 
-            const trendData = ${JSON.stringify(recentRequests.map((req) => ({
-              time: req.timestamp.toISOString(),
-              duration: Number(req.duration.toFixed(2)),
-              status: req.status
-            })))};
+            const trendData = ${JSON.stringify(chartData)};
             const statusData = [
                 { name: "成功", value: ${stats.successfulRequests} },
                 { name: "失败", value: ${stats.failedRequests} }
@@ -467,7 +498,7 @@ export function getDashboardPage(
             const requestsChartEl = document.getElementById("requestsChart");
             if (requestsChartEl && trendData.length > 0) {
                 const requestsChart = echarts.init(requestsChartEl);
-                const timeAxis = trendData.map(item => new Date(item.time).toLocaleTimeString());
+                const timeAxis = trendData.map(item => item.displayTime);
                 const durationSeries = trendData.map(item => item.duration);
                 requestsChart.setOption({
                     tooltip: { trigger: "axis" },

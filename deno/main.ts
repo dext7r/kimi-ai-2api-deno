@@ -26,6 +26,38 @@ try {
   }
 }
 
+const kv = await Deno.openKv();
+const KV_STATS_KEY = ["dashboard", "stats"] as const;
+const KV_REQUEST_PREFIX = ["dashboard", "requests"] as const;
+const MAX_RECENT_REQUESTS = 50;
+
+type PersistedStats = {
+  totalRequests: number;
+  successfulRequests: number;
+  failedRequests: number;
+  lastRequestTime: string;
+  averageResponseTime: number;
+  apiCallsCount: number;
+  modelsCallsCount: number;
+  streamingRequests: number;
+  nonStreamingRequests: number;
+  startTime: string;
+  fastestResponse: number;
+  slowestResponse: number;
+  modelUsage: Array<[string, number]>;
+};
+
+type PersistedLiveRequest = {
+  id: string;
+  timestamp: string;
+  method: string;
+  path: string;
+  status: number;
+  duration: number;
+  userAgent: string;
+  model?: string;
+};
+
 const envOrDefault = (key: string, fallback: string) => Deno.env.get(key) ?? fallback;
 
 const knownModels = envOrDefault("KNOWN_MODELS", "kimi-k2-instruct-0905,kimi-k2-instruct")
@@ -102,6 +134,147 @@ const stats: RequestStats = {
 };
 
 const liveRequests: LiveRequest[] = [];
+
+await restoreDashboardState();
+await saveDashboardState();
+
+setInterval(() => {
+  saveDashboardState().catch((error) => console.warn("定时持久化仪表盘统计信息失败:", error));
+}, 30_000);
+
+function recordAndPersist(
+  statsObj: RequestStats,
+  liveReqs: LiveRequest[],
+  req: { method: string; path: string; userAgent: string; model?: string },
+  status: number,
+  duration: number,
+): void {
+  recordRequest(statsObj, liveReqs, req, status, duration);
+  const latest = liveReqs[0];
+  if (latest) {
+    const copy: LiveRequest = {
+      ...latest,
+      timestamp: new Date(latest.timestamp),
+    };
+    persistRecentRequest(copy).catch((error) => console.warn("写入最近请求记录失败:", error));
+  }
+  scheduleDashboardPersist();
+}
+
+async function restoreDashboardState(): Promise<void> {
+  try {
+    const statsEntry = await kv.get<PersistedStats>(KV_STATS_KEY);
+
+    if (statsEntry.value) {
+      const data = statsEntry.value;
+      stats.totalRequests = data.totalRequests ?? stats.totalRequests;
+      stats.successfulRequests = data.successfulRequests ?? stats.successfulRequests;
+      stats.failedRequests = data.failedRequests ?? stats.failedRequests;
+      stats.averageResponseTime = data.averageResponseTime ?? stats.averageResponseTime;
+      stats.apiCallsCount = data.apiCallsCount ?? stats.apiCallsCount;
+      stats.modelsCallsCount = data.modelsCallsCount ?? stats.modelsCallsCount;
+      stats.streamingRequests = data.streamingRequests ?? stats.streamingRequests;
+      stats.nonStreamingRequests = data.nonStreamingRequests ?? stats.nonStreamingRequests;
+      stats.fastestResponse = data.fastestResponse ?? stats.fastestResponse;
+      stats.slowestResponse = data.slowestResponse ?? stats.slowestResponse;
+      stats.lastRequestTime = data.lastRequestTime ? new Date(data.lastRequestTime) : stats.lastRequestTime;
+      stats.startTime = data.startTime ? new Date(data.startTime) : stats.startTime;
+      stats.modelUsage = new Map(data.modelUsage ?? []);
+    }
+
+    const restored: LiveRequest[] = [];
+    const iter = kv.list<PersistedLiveRequest>({ prefix: KV_REQUEST_PREFIX }, {
+      reverse: true,
+      limit: MAX_RECENT_REQUESTS,
+    });
+    for await (const entry of iter) {
+      const value = entry.value;
+      if (!value) continue;
+      restored.push({
+        ...value,
+        timestamp: new Date(value.timestamp),
+      });
+    }
+    liveRequests.splice(0, liveRequests.length, ...restored);
+    await pruneOldRequests();
+  } catch (error) {
+    console.warn("恢复仪表盘状态失败:", error);
+  }
+}
+
+async function saveDashboardState(): Promise<void> {
+  try {
+    const statsValue: PersistedStats = {
+      totalRequests: stats.totalRequests,
+      successfulRequests: stats.successfulRequests,
+      failedRequests: stats.failedRequests,
+      lastRequestTime: stats.lastRequestTime.toISOString(),
+      averageResponseTime: stats.averageResponseTime,
+      apiCallsCount: stats.apiCallsCount,
+      modelsCallsCount: stats.modelsCallsCount,
+      streamingRequests: stats.streamingRequests,
+      nonStreamingRequests: stats.nonStreamingRequests,
+      startTime: stats.startTime.toISOString(),
+      fastestResponse: stats.fastestResponse,
+      slowestResponse: stats.slowestResponse,
+      modelUsage: Array.from(stats.modelUsage.entries()),
+    };
+
+    await kv.set(KV_STATS_KEY, statsValue);
+  } catch (error) {
+    console.warn("持久化仪表盘统计信息失败:", error);
+  }
+}
+
+async function persistRecentRequest(req: LiveRequest): Promise<void> {
+  try {
+    const key: Deno.KvKey = [...KV_REQUEST_PREFIX, req.timestamp.getTime(), req.id];
+    const value: PersistedLiveRequest = {
+      id: req.id,
+      timestamp: req.timestamp.toISOString(),
+      method: req.method,
+      path: req.path,
+      status: req.status,
+      duration: req.duration,
+      userAgent: req.userAgent,
+      model: req.model,
+    };
+    await kv.set(key, value);
+    await pruneOldRequests();
+  } catch (error) {
+    console.warn("写入最近请求记录失败:", error);
+  }
+}
+
+async function pruneOldRequests(): Promise<void> {
+  try {
+    let count = 0;
+    const deletions: Promise<void>[] = [];
+    const iter = kv.list<PersistedLiveRequest>({ prefix: KV_REQUEST_PREFIX }, { reverse: true });
+    for await (const entry of iter) {
+      if (!entry.value) continue;
+      count++;
+      if (count > MAX_RECENT_REQUESTS) {
+        deletions.push(kv.delete(entry.key));
+      }
+    }
+    if (deletions.length) {
+      await Promise.allSettled(deletions);
+    }
+  } catch (error) {
+    console.warn("清理由于过多的最近请求失败:", error);
+  }
+}
+
+let persistScheduled = false;
+function scheduleDashboardPersist(): void {
+  if (persistScheduled) return;
+  persistScheduled = true;
+  queueMicrotask(() => {
+    persistScheduled = false;
+    saveDashboardState().catch((error) => console.warn("异步持久化仪表盘统计信息失败:", error));
+  });
+}
 
 // ============================================================================ 
 // 会话与 nonce 管理
@@ -341,7 +514,7 @@ function streamSuccessResponse(
           controller.enqueue(encoder.encode(createSSEData(buildCompletionChunk(requestId, model, "", "stop"))));
         }
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-        recordRequest(
+        recordAndPersist(
           stats,
           liveRequests,
           { method: "POST", path: "/v1/chat/completions", userAgent, model },
@@ -357,7 +530,7 @@ function streamSuccessResponse(
           ),
         );
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-        recordRequest(
+        recordAndPersist(
           stats,
           liveRequests,
           { method: "POST", path: "/v1/chat/completions", userAgent, model },
@@ -395,7 +568,7 @@ function streamErrorResponse(
       );
       controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       controller.close();
-      recordRequest(
+      recordAndPersist(
         stats,
         liveRequests,
         { method: "POST", path: "/v1/chat/completions", userAgent, model },
@@ -423,7 +596,7 @@ async function handleModels(req: Request): Promise<Response> {
   const userAgent = req.headers.get("user-agent") || "unknown";
 
   if (!verifyAuth(req, CONFIG.defaultKey)) {
-    recordRequest(stats, liveRequests, { method: "GET", path: "/v1/models", userAgent }, 401, Date.now() - startTime);
+    recordAndPersist(stats, liveRequests, { method: "GET", path: "/v1/models", userAgent }, 401, Date.now() - startTime);
     return createErrorResponse("需要 Bearer Token 认证。", "unauthorized", 401);
   }
 
@@ -440,7 +613,7 @@ async function handleModels(req: Request): Promise<Response> {
     })),
   };
 
-  recordRequest(stats, liveRequests, { method: "GET", path: "/v1/models", userAgent }, 200, Date.now() - startTime);
+  recordAndPersist(stats, liveRequests, { method: "GET", path: "/v1/models", userAgent }, 200, Date.now() - startTime);
 
   return new Response(JSON.stringify(models), {
     headers: { "Content-Type": "application/json" },
@@ -452,7 +625,7 @@ async function handleChatCompletions(req: Request): Promise<Response> {
   const userAgent = req.headers.get("user-agent") || "unknown";
 
   if (!verifyAuth(req, CONFIG.defaultKey)) {
-    recordRequest(
+    recordAndPersist(
       stats,
       liveRequests,
       { method: "POST", path: "/v1/chat/completions", userAgent },
@@ -466,7 +639,7 @@ async function handleChatCompletions(req: Request): Promise<Response> {
   try {
     requestData = await req.json();
   } catch {
-    recordRequest(
+    recordAndPersist(
       stats,
       liveRequests,
       { method: "POST", path: "/v1/chat/completions", userAgent },
@@ -478,7 +651,7 @@ async function handleChatCompletions(req: Request): Promise<Response> {
 
   const messages: Message[] = Array.isArray(requestData.messages) ? requestData.messages : [];
   if (!messages.length || messages[messages.length - 1]?.role !== "user") {
-    recordRequest(
+    recordAndPersist(
       stats,
       liveRequests,
       { method: "POST", path: "/v1/chat/completions", userAgent },
@@ -505,7 +678,7 @@ async function handleChatCompletions(req: Request): Promise<Response> {
   const clientModel = typeof requestData.model === "string" ? requestData.model : CONFIG.modelName;
   const upstreamModel = CONFIG.upstreamModelMap[clientModel];
   if (!upstreamModel) {
-    recordRequest(
+    recordAndPersist(
       stats,
       liveRequests,
       { method: "POST", path: "/v1/chat/completions", userAgent },
@@ -570,7 +743,7 @@ async function handleChatCompletions(req: Request): Promise<Response> {
       },
     };
 
-    recordRequest(
+    recordAndPersist(
       stats,
       liveRequests,
       { method: "POST", path: "/v1/chat/completions", userAgent, model: clientModel },
@@ -589,7 +762,7 @@ async function handleChatCompletions(req: Request): Promise<Response> {
       return streamErrorResponse(message, requestId, clientModel, startTime, userAgent);
     }
 
-    recordRequest(
+    recordAndPersist(
       stats,
       liveRequests,
       { method: "POST", path: "/v1/chat/completions", userAgent, model: clientModel },

@@ -148,6 +148,7 @@ deno task dev
 # Shell 脚本方式（自动加载 .env 并检查端口占用）
 ./start.sh
 ```
+> 仪表盘统计使用 Deno KV（不稳定特性），`deno.json` 中的任务已默认附带 `--unstable-kv` 与读写权限；若手动运行 `deno run`，请记得加上 `--unstable-kv --allow-read --allow-write`。
 
 ---
 

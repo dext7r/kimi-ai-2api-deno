@@ -1,7 +1,7 @@
 {
   "tasks": {
-    "start": "deno run --allow-net --allow-env --allow-read=.env main.ts",
-    "dev": "deno run --allow-net --allow-env --allow-read=.env --watch main.ts"
+    "start": "deno run --unstable-kv --allow-net --allow-env --allow-read --allow-write main.ts",
+    "dev": "deno run --unstable-kv --allow-net --allow-env --allow-read --allow-write --watch main.ts"
   },
   "compilerOptions": {
     "lib": ["deno.window"]
