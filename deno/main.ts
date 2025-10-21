@@ -413,11 +413,14 @@ async function handleModels(req: Request): Promise<Response> {
 
   const models = {
     object: "list",
-    data: CONFIG.knownModels.map((name) => ({
-      id: name,
+    data: Object.entries(CONFIG.upstreamModelMap).map(([modelId, upstreamModel]) => ({
+      id: modelId,
       object: "model",
       created: Math.floor(Date.now() / 1000),
       owned_by: "kimi-ai-2api",
+      metadata: {
+        upstream_model: upstreamModel,
+      },
     })),
   };
 
