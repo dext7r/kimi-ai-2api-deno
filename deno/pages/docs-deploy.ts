@@ -35,7 +35,7 @@ export function getDocsPage(
             <h2 class="text-xl font-semibold text-slate-800 flex items-center gap-2">📋 获取模型列表</h2>
             <p class="text-slate-600">GET <code class="px-2 py-1 rounded bg-slate-200 text-slate-700">/v1/models</code></p>
             <div class="bg-slate-900 text-slate-100 rounded-lg p-4 font-mono text-sm overflow-x-auto">
-<pre class="hljs language-bash">curl http://localhost:${config.port}/v1/models \\
+<pre class="hljs language-bash">curl https://kimi-ai-2api.deno.dev/v1/models \\
   -H "Authorization: Bearer ${config.defaultKey}"</pre>
             </div>
         </section>
@@ -45,7 +45,7 @@ export function getDocsPage(
             <div>
                 <h3 class="text-sm font-semibold text-slate-700 mb-2">非流式</h3>
                 <div class="bg-slate-900 text-slate-100 rounded-lg p-4 font-mono text-xs overflow-x-auto">
-<pre class="hljs language-bash">curl -X POST http://localhost:${config.port}/v1/chat/completions \\
+<pre class="hljs language-bash">curl -X POST https://kimi-ai-2api.deno.dev/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer ${config.defaultKey}" \\
   -d '{
@@ -60,7 +60,7 @@ export function getDocsPage(
             <div>
                 <h3 class="text-sm font-semibold text-slate-700 mb-2">流式</h3>
                 <div class="bg-slate-900 text-slate-100 rounded-lg p-4 font-mono text-xs overflow-x-auto">
-<pre class="hljs language-bash">curl -N -X POST http://localhost:${config.port}/v1/chat/completions \\
+<pre class="hljs language-bash">curl -N -X POST https://kimi-ai-2api.deno.dev/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer ${config.defaultKey}" \\
   -d '{
@@ -83,7 +83,7 @@ export function getDocsPage(
 
 client = OpenAI(
     api_key="${config.defaultKey}",
-    base_url="http://localhost:${config.port}/v1"
+    base_url="https://kimi-ai-2api.deno.dev/v1"
 )
 
 response = client.chat.completions.create(
@@ -101,7 +101,7 @@ print(response.choices[0].message.content)</pre>
 
 const client = new OpenAI({
   apiKey: "${config.defaultKey}",
-  baseURL: "http://localhost:${config.port}/v1",
+  baseURL: "https://kimi-ai-2api.deno.dev/v1",
 });
 
 const response = await client.chat.completions.create({

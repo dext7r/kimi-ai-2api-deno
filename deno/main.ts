@@ -191,7 +191,7 @@ async function fetchNonce(): Promise<string> {
     }
 
     const html = await response.text();
-    const match = html.match(/var kimi_ajax = ({.*?});/);
+    const match = html.match(/var\s+kimi_ajax\s*=\s*({[\s\S]*?});/);
     if (!match) {
       throw new Error("在页面 HTML 中未找到 'kimi_ajax' 变量。");
     }

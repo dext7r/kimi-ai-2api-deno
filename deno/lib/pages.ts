@@ -301,7 +301,7 @@ export function getHomePage(config: ProxyConfig, lang: Language = "zh-CN", curre
                 <span class="text-2xl">⚙️</span> 快速调用示例
             </h3>
             <div class="rounded-xl bg-slate-900 text-slate-50 p-4 sm:p-5 overflow-x-auto">
-<pre class="hljs language-bash">curl -X POST http://localhost:${config.port}/v1/chat/completions \\
+<pre class="hljs language-bash">curl -X POST https://kimi-ai-2api.deno.dev/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer ${config.defaultKey}" \\
   -d '{"model":"${config.modelName}","messages":[{"role":"user","content":"Hello!"}]}'</pre>
